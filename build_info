@@ -1,0 +1,48 @@
+When we deployed this app quickly, we did a build spec inline in a CodeBuild job.
+
+
+I think this is the CodeDeploy one...
+
+version: 0.2
+phases:
+  install:
+    commands:
+      - pip install -r requirements.txt #install code dependencies
+  build:
+    commands:
+      - python tests_app.py -v #this will test the app works
+artifacts:
+  files:
+    - '**/*'
+    
+
+And this could be an ECS / ECS Fargate one
+
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo UnitTest the code
+      - pip install -r requirements.txt #install code dependencies
+      - python tests_app.py -v
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      - REPOSITORY_URI=$ECR_REPO
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t $REPOSITORY_URI:latest .
+      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo Writing image definitions file...
+      - printf '[{"name":"ApiTask","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+artifacts:
+  files: imagedefinitions.json
